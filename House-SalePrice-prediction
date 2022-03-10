@@ -1,0 +1,211 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy.stats as stats
+import numpy as np
+
+from sklearn.manifold import TSNE
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+train = pd.read_csv("/content/drive/MyDrive/Colab Notebooks/house_price_competition/input/train.csv")
+test = pd.read_csv("/content/drive/MyDrive/Colab Notebooks/house_price_competition/input/test.csv")
+train.head(5)
+test.head(5)
+
+//############EDA################
+
+quantitative = [f for f in train.columns if train.dtypes[f] != 'object']
+quantitative.remove('SalePrice')
+quantitative.remove('Id')
+qualitative = [f for f in train.columns if train.dtypes[f] == 'object']
+
+train.info()
+
+missing = train.isnull().sum()
+missing = missing[missing>0]
+missing.sort_values(inplace=True)
+missing.plot.bar()
+print(len(missing))
+missing_over_than_a_half = missing[missing > 600]
+missing_over_than_a_half
+//19 attributes have missing values, 5 over 50% of all data.
+
+y = train['SalePrice']
+plt.figure(1); plt.title('Johnson SU')
+sns.distplot(y, kde = False, fit = stats.johnsonsu)
+plt.figure(2); plt.title('Normal')
+sns.distplot(y, kde = False, fit = stats.norm)
+plt.figure(3); plt.title('Log Normal')
+sns.distplot(y, kde = False, fit = stats.lognorm)
+/*
+'SalePrice' attribute doesn't follow normal distribution 
+which means before performing regression it has to be transformed. 
+While log transformation does pretty good job, best fit is unbounded Johnson distribution.
+about distribution: https://www.kdnuggets.com/2020/02/probability-distributions-data-science.html 
+*/
+
+P = 0.05
+test_normality = lambda x : stats.shapiro(x.fillna(np.mean(x)))[1] > P
+normal = pd.DataFrame(train[quantitative])
+normal = normal.apply(test_normality)
+normal
+
+/*
+Also none of above quantitive attributes has "normal distribution", 
+So these attribute have to be transformed too
+
+For the continuous data, test of the normality is an important step 
+for deciding the measures of central tendency and statistical methods for data analysis.
+
+about normality: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6350423/ 
+about shapiro: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html#scipy.stats.shapiro 
+https://m.blog.naver.com/y4769/221896138434
+
+귀무가설 H0; 표본의 모집단이 정규분포를 이루고 있다.
+대립가설 H1; 표본의 모집단이 정규분포를 이루고 있지않다. 
+p(유의확률), 0.001 기준
+*/
+
+def get_order_by_mean_of_saleprice(frame, feature):
+    ordering = pd.DataFrame()
+    ordering['val'] = frame[feature].unique()
+    ordering.index = ordering.val
+    ordering['spmean'] = frame[[feature, 'SalePrice']].groupby(feature).mean()['SalePrice']
+    ordering = ordering.sort_values('spmean')
+    ordering['ordering'] = range(1, ordering.shape[0]+1)
+    ordering = ordering['ordering'].to_dict()
+    return ordering
+
+def encode_qulitative_to_order_of_mean_saleprice(frame, feature):
+  ordering = get_order_by_mean_of_saleprice(frame, feature)
+  for category, order in ordering.items():
+    frame.loc[frame[feature] == category, feature+'_E'] = order
+    
+qualitative_encoded = []
+for q in qualitative:
+  encode_qulitative_to_order_of_mean_saleprice(train, q)
+  qualitative_encoded.append(q+'_E')
+print(qualitative_encoded)
+
+train.head()
+
+plt.figure(1, figsize=(0.25*(len(quantitative)+1), 0.2*(len(quantitative)+1)))
+corr = train[quantitative+['SalePrice']].corr()
+sns.heatmap(corr)
+sns.clustermap(corr)
+
+plt.figure(2, figsize=(0.25*(len(qualitative_encoded)+1), 0.2*(len(qualitative_encoded)+1)))
+corr = train[qualitative_encoded+['SalePrice']].corr()
+sns.heatmap(corr)
+
+plt.figure(3, figsize=(0.25*(len(qualitative_encoded)+1), 0.2*(len(quantitative)+1)))
+corr = pd.DataFrame(np.zeros([len(quantitative)+1, len(qualitative_encoded)+1]), index=quantitative+['SalePrice'], columns=qualitative_encoded+['SalePrice'])
+for q1 in quantitative+['SalePrice']:
+    for q2 in qualitative_encoded+['SalePrice']:
+        corr.loc[q1, q2] = train[q1].corr(train[q2])
+sns.heatmap(corr)
+
+def spearman(frame, features):
+    spr = pd.DataFrame()
+    spr['feature'] = features
+    spr['spearman'] = [frame[f].corr(frame['SalePrice'], 'spearman') for f in features]
+    spr = spr.sort_values('spearman')
+    plt.figure(figsize=(6, 0.25*len(features)))
+    sns.barplot(data=spr, y='feature', x='spearman', orient='h')
+    
+features = quantitative + qualitative_encoded
+spearman(train, features)
+
+def display_box_plot(frame, feature):
+  def box_plot(frame, feature):
+    plt.boxplot(frame[feature],
+                  notch=1,
+                  sym='rs',
+                  vert=0)
+    feature_name = feature
+    plt.title('box plot of '+feature_name)
+    plt.yticks([1], [feature_name])
+    plt.show()
+  def check_quantitative_dtype(frame):
+    if frame.dtypes != 'object':
+      return True
+    else:
+      return False
+
+  if check_quantitative_dtype:
+    box_plot(frame, feature)
+  else:
+    print("It's not countinuous data")
+    
+  display_box_plot(train, quantitative[8])
+  
+  //##check outliers##
+  
+  def get_outlier_index(values):
+  values_df = pd.DataFrame(data = values)
+  values_df["z_score"] = stats.zscore(values_df[0])
+  return list(values_df.loc[values_df['z_score'].abs() >= 3].index)
+def get_outlier_index_of_total_attributes(frame, attributes_to_remove_outliers):
+  outliers_index = []
+  for feature in attributes_to_remove_outliers:
+    index = get_outlier_index(frame[feature].values)
+    outliers_index.append(index)
+  outliers_index = list(set(sum(outliers_index, [])))
+  print("{} outliers found".format(len(outliers_index)))
+  return outliers_index
+def discard_outliers(frame, attributes_to_remove_outliers):
+  outliers_index = get_outlier_index_of_total_attributes(train, attributes_to_remove_outliers)
+  frame.drop(outliers_index, inplace=True)
+  
+ //참조: https://kanoki.org/2020/04/23/how-to-remove-outliers-in-python/
+
+attributes_to_remove_outliers = quantitative
+discard_outliers(train, attributes_to_remove_outliers)
+
+features = quantitative + qualitative_encoded
+X = train[features].fillna(0.).values
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+tsne = TSNE(n_components=2, random_state=0, perplexity=50)
+X_tsne = tsne.fit_transform(X_scaled)
+
+pca = PCA(n_components=30)
+pca.fit(X_scaled)
+X_pca = pca.transform(X_scaled)
+
+kmeans = KMeans(n_clusters=5)
+kmeans.fit(X_pca)
+
+fr = pd.DataFrame({'tsne1': X_tsne[:,0], 'tsne2': X_tsne[:, 1], 'cluster': kmeans.labels_})
+sns.lmplot(data=fr, x='tsne1', y='tsne2', hue='cluster', fit_reg=False)
+
+print(np.sum(pca.explained_variance_ratio_))
+
+//###########Models############
+
+train.drop(["Id"], axis=1, inplace=True)
+test.drop(["Id"], axis=1, inplace=True)
+
+discard_outliers(train, ["GrLivArea"])
+
+train.reset_index(drop=True, inplace=True)
+
+train["SalePrice"] = np.log1p(train["SalePrice"])
+y = train['SalePrice'].reset_index(drop=aTrue)
+
+//Feature##
+
+train_features = train.drop(["SalePrice"], axis=1)
+test_features = test
+features = pd.concat([train_featuers, test_features]).reset_index(inplace = True)
+
+features.shape
+
+.....
