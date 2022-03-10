@@ -1,0 +1,265 @@
+! pip install kaggle
+
+def import_json_api():
+  from google.colab import files
+  files.upload() #select json.file
+  ! rm -r ~/.kaggle
+  ! rmdir ~/.kaggle
+  # Make a directory named “.kaggle”
+  ! mkdir ~/.kaggle
+  # Copy the “kaggle.json” into this new directory
+  ! cp kaggle.json ~/.kaggle/
+  # Allocate the required permission for this file.
+  ! chmod 600 ~/.kaggle/kaggle.json
+
+def command_linux_shell(shell):
+  import os
+  os.system(shell)
+
+def make_linux_shell_to_download_from_kaggle(com_or_data, name):
+  if com_or_data == "competition":
+    return "kaggle competitions download -c " + name
+  elif com_or_data == "dataset":
+    return "kaggle datasets download " + name
+  else:
+    return print("choose competitions or datasets")
+
+def load_competitions_or_datasets_from_kaggle(com_or_data, name):
+  command_linux_shell(make_linux_shell_to_download_from_kaggle(com_or_data, name))
+  command_linux_shell(name+".zip")
+  
+  def load_CSVdata(link):
+  import pandas as pd
+  return pd.read_csv(link)
+
+def get_train_target(total_data, train_value_names, target_value_names):
+  data = total_data[train_value_names].to_numpy()
+  target = total_data[target_value_names].to_numpy()
+  return data, target
+
+def train_test_splitter(train, target):
+  from sklearn.model_selection import train_test_split
+  train_input, test_input, train_target, test_target = train_test_split(train, target)
+  print("train set volume: {}, test set volume: {}".format(train_input.shape, test_input.shape))
+  return train_input, test_input, train_target, test_target
+
+def cross_validate(obj, train_input, train_target, n_splits):
+  from sklearn.model_selection import cross_validate
+  scores = cross_validate(obj , train_input, train_target.ravel(), cv = get_splitter(n_splits),                         return_train_score = True, n_jobs = -1)
+  print("average validate test score: {}".format(np.mean(scores["train_score"])))
+  print("average train score: {}".format(np.mean(scores["test_score"])))
+
+def get_splitter(n_splits):
+  from sklearn.model_selection import StratifiedKFold
+  return StratifiedKFold(n_splits, shuffle = True)
+
+def train_model(model, train_input, train_target):
+  model.fit(train_input, train_target)
+  print("train score: {}".format(model.score(train_input, train_target)))
+  return model
+  
+def print_model_test_score(trained_model, test_input, test_target):
+  return print("test score: {}".format(trained_model.score(test_input, test_target)))
+
+def is_there_null(data_frame):
+  print("\n<data shape>: {}\n\n".format(data_frame.shape))
+  print("<null count>\n")
+  print(data_frame.isnull().sum(axis = 0))
+
+def fill_na_with_average(df, target_column):
+  if target_column == "all":
+    df.fillna(df.mean())
+  else:
+    df[target_column].fillna(df[target_column].mean(), inplace=True)
+
+def switch_object_to_boolean(data_frame, object_name):
+  for i in range(len(data_frame[object_name])):
+    if data_frame[object_name][i] == "male" or "Male":
+      data_frame[object_name][i] = 1
+    elif data_frame[object_name][i] == "female" or "Female":
+      data_frame[object_name][i] = 0
+    else:
+      data_frame[object_name][i] = -1
+      
+def get_GridSearchCV(obj):
+  import numpy as np
+  from sklearn.model_selection import GridSearchCV
+  params = {'min_impurity_decrease': np.arange(0.0001, 0.001, 0.0001),
+            'max_depth': range(5, 20, 1),
+            'min_samples_split': range(2, 100, 10)}
+  return GridSearchCV(obj, params, n_jobs = -1)
+
+def get_RandomizedSearchCV(obj):
+  from sklearn.model_selection import RandomizedSearchCV
+  from scipy.stats import uniform, randint
+  params = {'min_impurity_decrease': uniform(0.0001, 0.001),
+            'max_depth': randint(20, 50),
+            'min_samples_split': randint(2, 25),
+            'min_samples_leaf': randint(1, 25)}
+  return RandomizedSearchCV(obj, params, n_iter = 100, n_jobs = -1)
+
+def get_best_model(obj, train_input, train_target, is_randomized_searchCV):
+  import numpy as np
+  cv = which_searchCV(is_randomized_searchCV, obj)
+  cv.fit(train_input, train_target)
+  best_obj = cv.best_estimator_
+  print("best parameters: {}".format(cv.best_params_))
+  best_index = np.argmax(cv.cv_results_['mean_test_score'])
+  print(cv.cv_results_['params'][best_index])
+  return best_obj
+
+def which_searchCV(is_randomized_searchCV, obj):
+  if is_randomized_searchCV == True:
+    return get_RandomizedSearchCV(obj)
+  else:
+    return get_GridSearchCV(obj)
+    
+def get_gradient_boosting():
+  from sklearn.ensemble import GradientBoostingClassifier
+  return GradientBoostingClassifier(n_estimators = 300)
+
+def get_histogram_based_gradient_boosting():
+  #import enable_hist_gradient_boosting class to use HistGradientBoostingClassifier
+  from sklearn.experimental import enable_hist_gradient_boosting 
+  from sklearn.ensemble import HistGradientBoostingClassifier
+  return HistGradientBoostingClassifier(max_iter = 300)
+
+def cross_validate(obj, train_input, train_target, n_splits):
+  from sklearn.model_selection import cross_validate
+  import numpy as np
+  scores = cross_validate(obj , train_input, train_target.ravel(), cv = get_splitter(n_splits),                         return_train_score = True, n_jobs = -1)
+  print("average validate test score: {}".format(np.mean(scores["train_score"])))
+  print("average train score: {}".format(np.mean(scores["test_score"])))
+
+def get_splitter(n_splits):
+    from sklearn.model_selection import StratifiedKFold
+    return StratifiedKFold(n_splits, shuffle = True)
+    
+def predict_age(train_df, test_df):
+  def is_there_A_in_B(a, b):
+    return a in b
+  def get_titles_in_name(name):
+    for title in ["Mr.", "Mrs.", "Master.", "Miss."]:
+      if is_there_A_in_B(title, name):
+        return title
+    return None
+  def switch_sex_to_titles(sex):
+    if sex == "male":
+      return "Mr."
+    elif sex == "female":
+      return "Mrs."
+    else:
+      return None
+  def get_titles_by_sex(df):
+    #return df[df.Titles.isnull()].Sex.apply(switch_sex_to_titles)
+    return df.loc[df.Titles.isnull(), ("Sex")].apply(switch_sex_to_titles)
+  def get_titles_column(df):
+    #df["Titles"] = df.Name.apply(get_titles_in_name)
+    df["Titles"] = df.loc[:, ("Name")].apply(get_titles_in_name)
+    df.Titles.fillna(get_titles_by_sex(df), inplace=True)
+  def get_titlesint_column(df):
+    from sklearn import preprocessing
+    le = preprocessing.LabelEncoder()
+    le.fit(df.Titles)
+    df["TitlesInt"] = le.transform(df.Titles)
+  def get_gradient_boosting_regressor():
+    from sklearn.ensemble import GradientBoostingRegressor
+    return GradientBoostingRegressor()
+  def print_model_score(obj, input, target):
+    print("fit score: {}".format(obj.score(input, target)))
+  def train_model(obj, input, target):
+    obj.fit(input, target)
+    print_model_score(obj, input, target)
+    return obj
+
+  get_titles_column(train_df)
+  get_titlesint_column(train_df)
+  switch_object_to_boolean(train_df, "Sex")
+  train_age_value_names = ["Pclass", "Survived", "Sex", "SibSp", "Parch", "Fare", "TitlesInt"]
+  target_age_value_names = ["Age"] 
+  train_age_data, target_age_data = get_train_target(train_df, train_age_value_names, target_age_value_names)
+  train_age_input, test_age_input, train_age_target, test_age_target = train_test_splitter(train_age_data, target_age_data)
+  trained_model = train_model(get_gradient_boosting_regressor(), train_age_input, train_age_target)
+  print("\n<test score>")
+  print_model_score(trained_model, test_age_input, test_age_target)
+  
+  get_titles_column(test_df)
+  get_titlesint_column(test_df)
+  switch_object_to_boolean(test_df, "Sex")
+  y_age_value_names = ["Pclass", "Survived", "Sex", "SibSp", "Parch", "Fare", "TitlesInt"]
+  y_age_target = test_df[y_age_value_names]
+  
+  predictions = trained_model.predict(y_age_target)
+
+  return predictions
+ 
+ import_json_api()
+ 
+ load_competitions_or_datasets_from_kaggle("competition", "titanic")
+ 
+ train_set = load_CSVdata("train.csv")
+test = load_CSVdata("test.csv")
+
+train_set[train_set.Age.notnull()].to_csv("train_age.csv", mode='w')
+train_set[train_set.Age.isnull()].to_csv("test_age.csv", mode='w')
+
+train_age_set = load_CSVdata("train_age.csv")
+test_age = load_CSVdata("test_age.csv")
+
+#fill_na_with_average(train_set, "Age")
+
+def fill_age_na_with_regressor(df, train_set, test_data):
+  prediction = predict_age(train_set, test_data)
+  index = df.loc[df.Age.isnull(), ["Age"]].index
+  for i in range(len(index)):
+    df.loc[index[i], ["Age"]] = prediction[i]
+
+def fill_age_na_with_regressor(df, train_set, test_data):
+  #df.Age.fillna(predict_age(train_set, test_data), inplace = True)
+  df.loc[df.Age.isnull(), "Age"] = predict_age(train_set, test_data)
+
+fill_age_na_with_regressor(train_set, train_age_set, test_age)
+switch_object_to_boolean(train_set, "Sex")
+
+train_set[train_set.isnull()].columns.values.tolist()
+
+train_value_names = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare"]
+target_value_names = ["Survived"]
+train_data, target_data = get_train_target(train_set, train_value_names, target_value_names)
+
+train_input, test_input, train_target, test_target = train_test_splitter(train_data, target_data)
+
+cv_result = get_best_model(get_gradient_boosting(), train_input, train_target, True)
+cv_result.score(train_input, train_target)
+cv_result.score(test_input, test_target)
+
+print("\n#####gradient boosting classifier validation test#####")
+cross_validate(get_gradient_boosting(), train_input, train_target, 5)
+print("\n#####get_histogram_based_gradient_boosting classifier validation test#####")
+cross_validate(get_histogram_based_gradient_boosting(), train_input, train_target, 5)
+
+#fill_na_with_average(test, "Age")
+fill_age_na_with_regressor(test, train_age_set, test_age)
+fill_na_with_average(test, "Fare")
+switch_object_to_boolean(test, "Sex")
+is_there_null(test)
+
+test_input_value_names = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare"]
+#test_input_value_names = ["Pclass", "Sex", "Age"]
+
+test_input = test[test_input_value_names]
+
+#model_gbm = train_model(get_gradient_boosting(), train_input, train_target)
+model_hgbm = train_model(get_histogram_based_gradient_boosting(), train_input, train_target)
+
+#prediction_by_gbm = model_gbm.predict(test_input)
+prediction_by_hgbm = model_hgbm.predict(test_input)
+
+import pandas as pd
+"""output = pd.DataFrame({'PassengerId':test.PassengerId,'Survived':prediction_by_gbm})
+output.to_csv('my_submission_gbm.csv',index=False)
+print("Your submission was saved successfully!")"""
+
+output = pd.DataFrame({'PassengerId':test.PassengerId,'Survived':prediction_by_hgbm})
+output.to_csv('my_submission_hgbm.csv',index=False)
+print("Your submission was saved successfully!")
