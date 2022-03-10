@@ -1,0 +1,49 @@
+/* 
+TSNE
+
+t-Distributed Stochastic Neighbor Embedding
+
+Dimension reduction technique used for data visualization
+
+how it works:
+
+Computes similarities between points and puts distance measures in a normal probability distribution
+Arranges the points randomly in lower dimentional space and does a similarity measure but this time, puts the distance measures in a t-distribution which is a lot similar to a normal distribution but taller on the middle and longer on the tails
+The distance between both distributions are minimized using the kullback leibler divergence as the cost function
+https://www.youtube.com/watch?v=NEaUSP4YerM
+
+https://www.youtube.com/watch?v=rSzIjJDuBXM
+*/
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+%matplotlib inline
+
+from sklearn.datasets import load_breast_cancer
+
+cancer=load_breast_cancer()
+cancer.keys()
+
+df = pd.DataFrame(data = cancer["data"], columns=cancer["feature_names"])
+df.head()
+
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+scaler.fit(df)
+
+scaled_data=scaler.transform(df)
+
+scaled_df = pd.DataFrame(data = scaled_data, columns=cancer['feature_names'])
+
+from sklearn.manifold import TSNE
+tsne = TSNE(n_components=2, perplexity=50)
+tsne.fit(scaled_data)
+x_tsne = tsne.fit_transform(scaled_data)
+x_tsne.shape
+scaled_data.shape
+x_tsne
+
+plt.figure(figsize=(8,6))
+plt.scatter(x_tsne[:,0], x_tsne[:,1], c=cancer['target'])
+plt.xlabel('First principal component')
+plt.ylabel('Second principal component')
